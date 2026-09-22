@@ -4,11 +4,14 @@ services:
     image: attendance-checkin:latest
     container_name: attendance-checkin
     restart: unless-stopped
+    env_file:
+      - .env
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     volumes:
       - ./data:/app/data
     environment:
-      - PORT=3000
-      - ADMIN_USER=admin
-      - ADMIN_PASS=flyhigh123
+      PORT: ${PORT:-3000}
+      NODE_ENV: ${NODE_ENV:-production}
+      ADMIN_USER: ${ADMIN_USER}
+      ADMIN_PASS: ${ADMIN_PASS}

@@ -4,8 +4,14 @@ const path = require('path');
 const crypto = require('crypto');
 
 const app = express();
+const staticRoot = fs.existsSync(path.join(__dirname, 'public')) ? path.join(__dirname, 'public') : __dirname;
+
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(staticRoot));
+
+app.get('/', function (req, res) {
+  res.sendFile(path.join(staticRoot, 'index.html'));
+});
 
 const PORT = process.env.PORT || 3000;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');

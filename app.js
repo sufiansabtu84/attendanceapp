@@ -9,6 +9,7 @@ let UI = {
   qrSaved: false,
 
   adminToken: localStorage.getItem('admin_token') || null,
+  lastAdminUsername: localStorage.getItem('last_admin_username') || 'admin',
   loginError: '',
   adminEvents: [],        // [{id,name,createdAt,registeredCount,arrivedCount}]
   adminManagingEventId: null,
@@ -162,8 +163,12 @@ function renderAdminLogin() {
   return '<div class="card">' +
     '<div class="band"><p class="eyebrow">Organizer access</p><p class="title-lg">Admin login</p></div>' +
     '<div class="section">' +
-    '<label>Username</label><input type="text" id="loginUser" autocomplete="username">' +
-    '<label>Password</label><input type="password" id="loginPass" autocomplete="current-password">' +
+    '<label>Username</label>' +
+    '<div style="position:relative;">' +
+      '<input type="text" id="loginUser" value="' + escapeHtml(UI.lastAdminUsername || 'admin') + '" autocomplete="username" style="padding-right:90px;">' +
+      '<span style="position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:#94a3b8;letter-spacing:0.02em;">last used</span>' +
+    '</div>' +
+    '<label>Password</label><input type="password" id="loginPass" autocomplete="current-password" placeholder="Enter password">' +
     '<div class="field-msg">' + escapeHtml(UI.loginError) + '</div>' +
     '<button class="btn-primary" id="loginBtn">Log in</button>' +
     '</div></div>';
@@ -313,10 +318,23 @@ function getQrBlob(boxId) {
 
 // ---------- common handlers ----------
 
+async function logoutAdminSession() {
+  const token = UI.adminToken;
+  UI.adminToken = null;
+  localStorage.removeItem('admin_token');
+  if (token) {
+    try {
+      await api('/api/admin/logout', { method: 'POST' });
+    } catch (e) {}
+  }
+}
+
 function attachCommonHandlers() {
   const adminToggle = document.getElementById('adminToggleBtn');
   if (adminToggle) adminToggle.addEventListener('click', async function () {
     if (UI.view === 'adminDashboard' || UI.view === 'adminLogin') {
+      await logoutAdminSession();
+      UI.loginError = '';
       UI.view = await pickDefaultView();
       render();
       return;
@@ -326,8 +344,7 @@ function attachCommonHandlers() {
         await loadAdminEvents();
         UI.view = 'adminDashboard';
       } catch (e) {
-        UI.adminToken = null;
-        localStorage.removeItem('admin_token');
+        await logoutAdminSession();
         UI.loginError = '';
         UI.view = 'adminLogin';
       }
@@ -457,12 +474,14 @@ function attachAdminLoginHandlers() {
   const btn = document.getElementById('loginBtn');
   const pass = document.getElementById('loginPass');
   async function tryLogin() {
-    const u = (document.getElementById('loginUser').value || '').trim();
+    const u = (document.getElementById('loginUser').value || UI.lastAdminUsername || 'admin').trim();
     const p = (document.getElementById('loginPass').value || '');
     try {
       const result = await api('/api/admin/login', { method: 'POST', body: { username: u, password: p } });
       UI.adminToken = result.token;
+      UI.lastAdminUsername = result.username || u;
       localStorage.setItem('admin_token', result.token);
+      localStorage.setItem('last_admin_username', UI.lastAdminUsername);
       UI.loginError = '';
       await loadAdminEvents();
       UI.view = 'adminDashboard';
@@ -615,9 +634,7 @@ function attachAdminDashboardHandlers() {
 
   const logoutBtn = document.getElementById('logoutBtn');
   if (logoutBtn) logoutBtn.addEventListener('click', async function () {
-    try { await api('/api/admin/logout', { method: 'POST' }); } catch (e) {}
-    UI.adminToken = null;
-    localStorage.removeItem('admin_token');
+    await logoutAdminSession();
     UI.view = await pickDefaultView();
     render();
   });
