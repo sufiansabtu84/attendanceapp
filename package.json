@@ -1,0 +1,16 @@
+{
+  "name": "attendance-checkin",
+  "version": "1.0.0",
+  "description": "Self-hosted event check-in app with QR registration, camera scanning, and an admin dashboard.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
