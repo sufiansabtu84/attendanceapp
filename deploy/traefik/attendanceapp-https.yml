@@ -16,3 +16,8 @@ tls:
   certificates:
     - certFile: /data/attendanceapp-certs/fullchain.pem
       keyFile: /data/attendanceapp-certs/privkey.pem
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /data/attendanceapp-certs/fullchain.pem
+        keyFile: /data/attendanceapp-certs/privkey.pem
