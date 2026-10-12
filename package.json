@@ -4,13 +4,20 @@
   "description": "Self-hosted event check-in app with QR registration, camera scanning, and an admin dashboard.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "build:scanner": "esbuild node_modules/jsqr/dist/jsQR.js --bundle --format=iife --global-name=jsQR --minify --outfile=public/jsqr.min.js"
   },
   "license": "MIT",
   "dependencies": {
-    "express": "^4.19.2"
+    "dotenv": "^18.0.7",
+    "express": "^4.19.2",
+    "jsqr": "^1.4.0",
+    "pg": "^8.23.1"
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
   }
 }

@@ -2,6 +2,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const database = require('./database');
 
 const app = express();
 const staticRoot = fs.existsSync(path.join(__dirname, 'public')) ? path.join(__dirname, 'public') : __dirname;
@@ -14,52 +15,15 @@ app.get('/', function (req, res) {
 });
 
 const PORT = process.env.PORT || 3000;
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
-
-const DEFAULT_ADMIN_USER = process.env.ADMIN_USER || 'admin';
-const DEFAULT_ADMIN_PASS = process.env.ADMIN_PASS || 'flyhigh123';
-
-// ---------- tiny JSON-file "database" with a write queue ----------
 
 function genId(prefix) {
   return prefix + Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
 }
 
-function loadDb() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (!fs.existsSync(DB_FILE)) {
-    const initial = {
-      events: [],
-      admins: [{ id: genId('adm_'), username: DEFAULT_ADMIN_USER, password: DEFAULT_ADMIN_PASS }]
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
-    return initial;
-  }
-  const raw = fs.readFileSync(DB_FILE, 'utf8');
-  const db = JSON.parse(raw);
-  if (!db.admins || !db.admins.length) {
-    db.admins = [{ id: genId('adm_'), username: DEFAULT_ADMIN_USER, password: DEFAULT_ADMIN_PASS }];
-  }
-  return db;
-}
-
-let db = loadDb();
-let writeQueue = Promise.resolve();
-
-function saveDb() {
-  writeQueue = writeQueue.then(function () {
-    return new Promise(function (resolve, reject) {
-      fs.writeFile(DB_FILE, JSON.stringify(db, null, 2), function (err) {
-        if (err) reject(err); else resolve();
-      });
-    });
-  });
-  return writeQueue;
-}
-
-function getEvent(id) {
-  return db.events.find(function (e) { return e.id === id; }) || null;
+function asyncHandler(handler) {
+  return function (req, res, next) {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
 }
 
 // ---------- admin sessions (in-memory) ----------
@@ -92,22 +56,22 @@ setInterval(function () {
 // ---------- public routes ----------
 
 // List events (names only — no attendee data, no counts)
-app.get('/api/events', function (req, res) {
-  res.json(db.events.map(function (e) { return { id: e.id, name: e.name }; }));
-});
+app.get('/api/events', asyncHandler(async function (req, res) {
+  res.json(await database.listPublicEvents());
+}));
 
 // Get one event (for the registration page)
-app.get('/api/events/:id', function (req, res) {
-  const ev = getEvent(req.params.id);
+app.get('/api/events/:id', asyncHandler(async function (req, res) {
+  const ev = await database.getEvent(req.params.id);
   if (!ev) return res.status(404).json({ error: 'Event not found' });
   res.json({ id: ev.id, name: ev.name });
-});
+}));
 
 function isValidEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
 
 // Register for an event
-app.post('/api/events/:id/register', function (req, res) {
-  const ev = getEvent(req.params.id);
+app.post('/api/events/:id/register', asyncHandler(async function (req, res) {
+  const ev = await database.getEvent(req.params.id);
   if (!ev) return res.status(404).json({ error: 'Event not found' });
 
   const parentName = String(req.body.parentName || '').trim();
@@ -131,24 +95,25 @@ app.post('/api/events/:id/register', function (req, res) {
     registeredAt: Date.now(),
     arrivedAt: null
   };
-  ev.attendees.push(attendee);
-  saveDb().then(function () {
+  try {
+    await database.createAttendee(ev.id, attendee);
     res.json({ id: attendee.id });
-  }).catch(function () {
+  } catch (error) {
+    console.error('Could not save registration:', error);
     res.status(500).json({ error: 'Could not save registration. Please try again.' });
-  });
-});
+  }
+}));
 
 // ---------- admin auth ----------
 
-app.post('/api/admin/login', function (req, res) {
+app.post('/api/admin/login', asyncHandler(async function (req, res) {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
-  const match = db.admins.find(function (a) { return a.username === username && a.password === password; });
+  const match = await database.findAdmin(username, password);
   if (!match) return res.status(401).json({ error: 'Incorrect username or password.' });
   const token = createSession(match.username);
   res.json({ token: token, username: match.username });
-});
+}));
 
 app.post('/api/admin/logout', requireAdmin, function (req, res) {
   const token = (req.headers.authorization || '').slice(7);
@@ -158,61 +123,48 @@ app.post('/api/admin/logout', requireAdmin, function (req, res) {
 
 // ---------- admin: events ----------
 
-app.get('/api/admin/events', requireAdmin, function (req, res) {
-  res.json(db.events.map(function (e) {
-    return {
-      id: e.id,
-      name: e.name,
-      createdAt: e.createdAt,
-      registeredCount: e.attendees.length,
-      arrivedCount: e.attendees.filter(function (a) { return a.arrivedAt; }).length
-    };
-  }));
-});
+app.get('/api/admin/events', requireAdmin, asyncHandler(async function (req, res) {
+  res.json(await database.listAdminEvents());
+}));
 
-app.post('/api/admin/events', requireAdmin, function (req, res) {
+app.post('/api/admin/events', requireAdmin, asyncHandler(async function (req, res) {
   const name = String(req.body.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Event name is required.' });
-  const ev = { id: genId('evt_'), name: name, createdAt: Date.now(), attendees: [] };
-  db.events.push(ev);
-  saveDb().then(function () { res.json(ev); });
-});
+  res.json(await database.createEvent(name, genId('evt_'), Date.now()));
+}));
 
-app.delete('/api/admin/events/:id', requireAdmin, function (req, res) {
-  const before = db.events.length;
-  db.events = db.events.filter(function (e) { return e.id !== req.params.id; });
-  if (db.events.length === before) return res.status(404).json({ error: 'Event not found' });
-  saveDb().then(function () { res.json({ ok: true }); });
-});
+app.delete('/api/admin/events/:id', requireAdmin, asyncHandler(async function (req, res) {
+  if (!await database.deleteEvent(req.params.id)) return res.status(404).json({ error: 'Event not found' });
+  res.json({ ok: true });
+}));
 
-app.get('/api/admin/events/:id/guests', requireAdmin, function (req, res) {
-  const ev = getEvent(req.params.id);
+app.get('/api/admin/events/:id/guests', requireAdmin, asyncHandler(async function (req, res) {
+  const ev = await database.getEvent(req.params.id);
   if (!ev) return res.status(404).json({ error: 'Event not found' });
-  res.json(ev.attendees);
-});
+  res.json(await database.listAttendees(ev.id));
+}));
 
-app.delete('/api/admin/events/:id/guests/:attendeeId', requireAdmin, function (req, res) {
-  const ev = getEvent(req.params.id);
+app.delete('/api/admin/events/:id/guests/:attendeeId', requireAdmin, asyncHandler(async function (req, res) {
+  const ev = await database.getEvent(req.params.id);
   if (!ev) return res.status(404).json({ error: 'Event not found' });
-  ev.attendees = ev.attendees.filter(function (a) { return a.id !== req.params.attendeeId; });
-  saveDb().then(function () { res.json({ ok: true }); });
-});
+  await database.deleteAttendee(ev.id, req.params.attendeeId);
+  res.json({ ok: true });
+}));
 
-app.post('/api/admin/events/:id/scan', requireAdmin, function (req, res) {
-  const ev = getEvent(req.params.id);
+app.post('/api/admin/events/:id/scan', requireAdmin, asyncHandler(async function (req, res) {
+  const ev = await database.getEvent(req.params.id);
   if (!ev) return res.status(404).json({ error: 'Event not found' });
   const code = String(req.body.code || '').trim();
-  const att = ev.attendees.find(function (a) { return a.id === code; });
+  const att = await database.markAttendeeArrived(ev.id, code, Date.now());
   if (!att) return res.status(404).json({ error: 'Code not recognized for this event.' });
-  if (!att.arrivedAt) att.arrivedAt = Date.now();
-  saveDb().then(function () { res.json({ ok: true, attendee: att }); });
-});
+  res.json({ ok: true, attendee: att });
+}));
 
-app.get('/api/admin/events/:id/export.csv', requireAdmin, function (req, res) {
-  const ev = getEvent(req.params.id);
+app.get('/api/admin/events/:id/export.csv', requireAdmin, asyncHandler(async function (req, res) {
+  const ev = await database.getEvent(req.params.id);
   if (!ev) return res.status(404).json({ error: 'Event not found' });
   const rows = [['Parent', 'Child', 'Email', 'Phone', 'Registered At', 'Arrived At']].concat(
-    ev.attendees.map(function (a) {
+    (await database.listAttendees(ev.id)).map(function (a) {
       return [
         a.parentName || '', a.childName || '', a.email, a.phone,
         a.registeredAt ? new Date(a.registeredAt).toLocaleString() : '',
@@ -227,35 +179,50 @@ app.get('/api/admin/events/:id/export.csv', requireAdmin, function (req, res) {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="' + filename + '"');
   res.send(csv);
-});
+}));
 
 // ---------- admin: manage admin accounts ----------
 
-app.get('/api/admin/admins', requireAdmin, function (req, res) {
-  res.json(db.admins.map(function (a) { return { id: a.id, username: a.username }; }));
-});
+app.get('/api/admin/admins', requireAdmin, asyncHandler(async function (req, res) {
+  res.json(await database.listAdmins());
+}));
 
-app.post('/api/admin/admins', requireAdmin, function (req, res) {
+app.post('/api/admin/admins', requireAdmin, asyncHandler(async function (req, res) {
   const username = String(req.body.username || '').trim();
   const password = String(req.body.password || '');
   if (!username || !password) return res.status(400).json({ error: 'Username and password are required.' });
   if (password.length < 4) return res.status(400).json({ error: 'Password should be at least 4 characters.' });
-  const exists = db.admins.some(function (a) { return a.username.toLowerCase() === username.toLowerCase(); });
+  const admins = await database.listAdmins();
+  const exists = admins.some(function (a) { return a.username.toLowerCase() === username.toLowerCase(); });
   if (exists) return res.status(400).json({ error: 'That username already exists.' });
-  const admin = { id: genId('adm_'), username: username, password: password };
-  db.admins.push(admin);
-  saveDb().then(function () { res.json({ id: admin.id, username: admin.username }); });
+  try {
+    res.json(await database.createAdmin(genId('adm_'), username, password));
+  } catch (error) {
+    if (error.code === '23505') return res.status(400).json({ error: 'That username already exists.' });
+    throw error;
+  }
+}));
+
+app.delete('/api/admin/admins/:id', requireAdmin, asyncHandler(async function (req, res) {
+  if (await database.countAdmins() <= 1) {
+    return res.status(400).json({ error: 'At least one admin login must remain.' });
+  }
+  if (!await database.deleteAdmin(req.params.id)) return res.status(404).json({ error: 'Admin not found' });
+  res.json({ ok: true });
+}));
+
+app.use(function (error, req, res, next) {
+  console.error(error);
+  if (res.headersSent) return next(error);
+  res.status(500).json({ error: 'Internal server error.' });
 });
 
-app.delete('/api/admin/admins/:id', requireAdmin, function (req, res) {
-  if (db.admins.length <= 1) return res.status(400).json({ error: 'At least one admin login must remain.' });
-  const before = db.admins.length;
-  db.admins = db.admins.filter(function (a) { return a.id !== req.params.id; });
-  if (db.admins.length === before) return res.status(404).json({ error: 'Admin not found' });
-  saveDb().then(function () { res.json({ ok: true }); });
-});
-
-app.listen(PORT, function () {
-  console.log('Attendance check-in app running on port ' + PORT);
-  console.log('Data file: ' + DB_FILE);
+database.initialize().then(function () {
+  app.listen(PORT, function () {
+    console.log('Attendance check-in app running on port ' + PORT);
+    console.log('Connected to PostgreSQL.');
+  });
+}).catch(function (error) {
+  console.error('Could not initialize PostgreSQL:', error);
+  process.exit(1);
 });

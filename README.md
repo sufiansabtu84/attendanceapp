@@ -5,20 +5,25 @@ name, email, phone), a personal QR code each guest must save before finishing,
 a password-gated admin dashboard, camera or manual QR scanning to mark guests
 arrived, CSV export, and multiple admin logins.
 
-Guest data is stored in `data/db.json` and survives restarts (as long as the
-`data` folder / Docker volume is kept).
+Events, attendees, and admin accounts are stored in PostgreSQL. Docker Compose
+persists the database in the `postgres_data` volume. On first startup against an
+empty database, the app imports records from `data/db.json` if that legacy file
+exists.
 
 ## 1. Run it locally (to test before deploying)
 
-Requires [Node.js](https://nodejs.org) 18 or newer.
+Requires [Node.js](https://nodejs.org) 18 or newer and a PostgreSQL database.
+Copy `.env.example` to `.env`, then set `DB_HOST`, `DB_PORT`, `DB_NAME`,
+`DB_USER`, and `DB_PASSWORD` to match your PostgreSQL server, or set
+`DATABASE_URL` to your hosted PostgreSQL connection string.
 
 ```bash
 npm install
 npm start
 ```
 
-Then open http://localhost:3000. Default admin login: `admin` / `flyhigh123`
-(change this — see "Changing the admin login" below).
+Then open http://localhost:3000. The admin login is seeded from `ADMIN_USER` and
+`ADMIN_PASS` in `.env` when the database has no admin accounts.
 
 ## 2. Push this to your GitHub repo
 
@@ -46,9 +51,9 @@ the password) or to push over SSH instead.
 
 ## 3. Build the Docker image for ARM
 
-This app has no native/compiled dependencies (just Node + Express + a JSON
-file), so the same `Dockerfile` builds for ARM without any special code
-changes — you're just telling Docker which CPU architecture to target.
+This app has no native/compiled dependencies (just Node, Express, and the
+PostgreSQL client), so the same `Dockerfile` builds for ARM without any special
+code changes — you're just telling Docker which CPU architecture to target.
 
 **On a Mac (Apple Silicon) or any machine with Docker Buildx:**
 
@@ -76,6 +81,12 @@ cd <your-repo>
 docker compose up -d --build
 ```
 
+Before the first start, copy `.env.example` to `.env` if you do not already have
+one. Set a strong `POSTGRES_PASSWORD` and `ADMIN_PASS`; if `.env` already exists,
+add the PostgreSQL settings from `.env.example` without overwriting your current
+admin credentials. Compose starts PostgreSQL and the app; the database is
+reachable from the host on `127.0.0.1:${POSTGRES_PORT:-5432}`.
+
 ## 4. Run it
 
 ```bash
@@ -95,8 +106,7 @@ docker compose up -d --build
 
 ## Changing the admin login
 
-Edit the `ADMIN_USER` / `ADMIN_PASS` values in `docker-compose.yml` (or your
-`.env` file if running locally) **before the first run** — they only seed the
+Edit the `ADMIN_USER` / `ADMIN_PASS` values in `.env` **before the first run** — they only seed the
 very first admin account. After that, add or remove admin logins from inside
 the app itself (Admin → "Admin logins"), which is the safer way to manage
 multiple staff accounts going forward.
@@ -121,7 +131,7 @@ attendance-checkin/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.example
-├── data/                Persisted guest data (db.json, git-ignored)
+├── data/                Legacy JSON import source (git-ignored)
 └── public/
     ├── index.html
     ├── style.css
