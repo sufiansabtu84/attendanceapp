@@ -31,7 +31,7 @@ services:
     volumes:
       - ./data:/app/data
     environment:
-      PORT: ${PORT:-3000}
+      PORT: "3000"
       NODE_ENV: ${NODE_ENV:-production}
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASS: ${ADMIN_PASS}
