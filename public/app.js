@@ -290,10 +290,20 @@ function drawQr(boxId, text) {
     const box = document.getElementById(boxId);
     if (!box) return;
     box.innerHTML = '';
+    box.dataset.qrQuietZone = '';
     if (window.QRCode) {
-      new QRCode(box, { text: text, width: 160, height: 160, colorDark: '#1B2420', colorLight: '#ffffff' });
+      const qr = new QRCode(box, {
+        text: text,
+        width: 320,
+        height: 320,
+        colorDark: '#1B2420',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.L
+      });
+      const moduleCount = qr._oQRCode && qr._oQRCode.getModuleCount();
+      if (moduleCount) box.dataset.qrQuietZone = String(Math.ceil(320 * 4 / moduleCount));
     } else {
-      box.innerHTML = '<div style="width:160px;height:160px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;text-align:center;padding:6px;">QR unavailable</div>';
+      box.innerHTML = '<div style="width:320px;height:320px;max-width:100%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;text-align:center;padding:6px;">QR unavailable</div>';
     }
   } catch (e) {}
 }
@@ -304,7 +314,15 @@ function getQrBlob(boxId) {
       const box = document.getElementById(boxId);
       const canvas = box ? box.querySelector('canvas') : null;
       if (!canvas) { reject(new Error('no canvas')); return; }
-      canvas.toBlob(function (blob) {
+      const quietZone = Number(box.dataset.qrQuietZone) || 24;
+      const output = document.createElement('canvas');
+      output.width = canvas.width + quietZone * 2;
+      output.height = canvas.height + quietZone * 2;
+      const context = output.getContext('2d');
+      context.fillStyle = '#ffffff';
+      context.fillRect(0, 0, output.width, output.height);
+      context.drawImage(canvas, quietZone, quietZone);
+      output.toBlob(function (blob) {
         if (blob) resolve(blob); else reject(new Error('toBlob failed'));
       }, 'image/png');
     } catch (e) { reject(e); }

@@ -86,7 +86,8 @@ button { font-family: inherit; cursor: pointer; }
 .event-pick:hover { border-color: var(--forest); }
 
 .qr-wrap { display: flex; flex-direction: column; align-items: center; padding: 22px; }
-.qr-box { background: #fff; padding: 10px; border-radius: 10px; border: 1px solid var(--line); }
+.qr-box { background: #fff; padding: 20px; border-radius: 10px; border: 1px solid var(--line); }
+.qr-box canvas { display: block; width: min(320px, calc(100vw - 112px)); height: auto; }
 .qr-caption { font-size: 13px; color: #5b665f; text-align: center; margin-top: 12px; max-width: 320px; }
 .save-note { font-size: 13px; color: var(--brick); text-align: center; margin-top: 10px; font-weight: 500; }
 .saved-note { font-size: 13px; color: var(--forest-dark); text-align: center; margin-top: 10px; font-weight: 500; }
