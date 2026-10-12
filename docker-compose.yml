@@ -1,0 +1,14 @@
+services:
+  attendance-checkin:
+    build: .
+    image: attendance-checkin:latest
+    container_name: attendance-checkin
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - PORT=3000
+      - ADMIN_USER=admin
+      - ADMIN_PASS=flyhigh123
