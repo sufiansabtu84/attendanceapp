@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: attendanceapp-postgres
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-attendance}
@@ -35,7 +36,7 @@ services:
       NODE_ENV: ${NODE_ENV:-production}
       ADMIN_USER: ${ADMIN_USER}
       ADMIN_PASS: ${ADMIN_PASS}
-      DB_HOST: db
+      DB_HOST: attendanceapp-postgres
       DB_PORT: 5432
       DB_NAME: ${POSTGRES_DB:-attendance}
       DB_USER: ${POSTGRES_USER:-attendance}
