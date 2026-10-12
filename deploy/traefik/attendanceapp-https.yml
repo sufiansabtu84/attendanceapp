@@ -1,0 +1,18 @@
+http:
+  routers:
+    attendanceapp-ip-https:
+      entryPoints:
+        - https
+      priority: 100
+      rule: "Host(`150.109.5.90`)"
+      service: attendanceapp-ip
+      tls: {}
+  services:
+    attendanceapp-ip:
+      loadBalancer:
+        servers:
+          - url: http://attendance-checkin:3000
+tls:
+  certificates:
+    - certFile: /data/attendanceapp-certs/fullchain.pem
+      keyFile: /data/attendanceapp-certs/privkey.pem

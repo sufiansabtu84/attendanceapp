@@ -40,6 +40,13 @@ services:
       DB_NAME: ${POSTGRES_DB:-attendance}
       DB_USER: ${POSTGRES_USER:-attendance}
       DB_PASSWORD: ${POSTGRES_PASSWORD}
+    networks:
+      - default
+      - easypanel
 
 volumes:
   postgres_data:
+
+networks:
+  easypanel:
+    external: true

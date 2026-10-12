@@ -1,0 +1,13 @@
+http:
+  routers:
+    attendanceapp-acme-challenge:
+      entryPoints:
+        - http
+      priority: 100
+      rule: "Host(`150.109.5.90`) && PathPrefix(`/.well-known/acme-challenge/`)"
+      service: attendanceapp-acme-challenge
+  services:
+    attendanceapp-acme-challenge:
+      loadBalancer:
+        servers:
+          - url: http://attendanceapp-acme-challenge:80
